@@ -63,6 +63,7 @@ const statusEl = document.getElementById("status");
 const newGameBtn = document.getElementById("newGameBtn");
 const hitBtn = document.getElementById("hitBtn");
 const standBtn = document.getElementById("standBtn");
+const surrenderBtn = document.getElementById("surrenderBtn");
 
 function setStatus(msg) {
   statusEl.textContent = msg;
