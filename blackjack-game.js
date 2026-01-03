@@ -1,6 +1,8 @@
 // ----- Card / Deck helpers -----pushchange
 const SUITS = ["♠", "♥", "♦", "♣"];
 const RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
+const bankrollAmtEl = document.getElementById("bankrollAmt");
+const betInputEl = document.getElementById("betInput");
 
 function createDeck() {
     const deck = [];
@@ -62,6 +64,17 @@ function handValue(hand) {
     return total;
 }
 
+// Betting helpers
+function updateBankrollUI() {
+    bankrollAmtEl.textContent = bankroll;
+}
+
+function getBetAmount() {
+    const bet = Math.floor(Number(betInputEl.value));
+    if (!Number.isFinite(bet) || bet <= 0) return 0;
+    return bet;
+}
+
 // ----- Game state -----
 let deck = [];
 let playerHand = [];
@@ -69,6 +82,8 @@ let dealerHand = [];
 let inRound = false;
 let shoeNeedsShuffle = false;
 let cutCardRemaining = 0; // when deck.length <= this, cut card is "reached"
+let bankroll = 1000;
+let currentBet = 0;
 
 // ----- UI elements -----
 const dealerCardsEl = document.getElementById("dealerCards");
@@ -82,6 +97,8 @@ const hitBtn = document.getElementById("hitBtn");
 const standBtn = document.getElementById("standBtn");
 const surrenderBtn = document.getElementById("surrenderBtn");
 const deckCountSelect = document.getElementById("deckCountSelect");
+const doubleBtn = document.getElementById("doubleBtn");
+const splitBtn = document.getElementById("splitBtn");
 
 function suitCode(suit) {
     // match your suit symbols to filename letters
@@ -98,16 +115,31 @@ function setStatus(msg) {
     statusEl.textContent = msg;
 }
 function renderHand(containerEl, hand, { hideSecondCard = false } = {}) {
-    containerEl.innerHTML = ""; // clear existing
+    const existing = containerEl.querySelectorAll("img");
 
-    hand.forEach((card, idx) => {
+    // 1) If the hand got smaller (new round), clear and rebuild once
+    if (existing.length > hand.length) {
+        containerEl.innerHTML = "";
+    }
+
+    // 2) Ensure we have one <img> per card; append only NEW cards
+    for (let idx = containerEl.querySelectorAll("img").length; idx < hand.length; idx++) {
         const img = document.createElement("img");
+        img.alt = "Card";
 
-        const shouldHide = hideSecondCard && idx === 1;
-        img.src = shouldHide ? "images/cards/RED_BACK.svg" : cardImageSrc(card);
-        img.alt = shouldHide ? "Hidden card" : cardToString(card);
+        // Only new cards should animate
+        img.classList.add("dealt");
+        img.style.animationDelay = `${idx * 60}ms`;
 
         containerEl.appendChild(img);
+    }
+
+    // 3) Update src for each card image (no re-creation, so no flashing)
+    const imgs = containerEl.querySelectorAll("img");
+    hand.forEach((card, idx) => {
+        const hidden = hideSecondCard && idx === 1;
+        imgs[idx].src = hidden ? "images/cards/RED_BACK.svg" : cardImageSrc(card);
+        imgs[idx].alt = hidden ? "Hidden card" : `${card.rank}${card.suit}`;
     });
 }
 function render({ hideDealerHoleCard = false } = {}) {
@@ -130,7 +162,8 @@ function render({ hideDealerHoleCard = false } = {}) {
     hitBtn.disabled = !inRound;
     standBtn.disabled = !inRound;
     newGameBtn.disabled = inRound;
-    surrenderBtn.disabled = !inRound;
+    surrenderBtn.disabled = !inRound || playerHand.length > 2;
+    doubleBtn.disabled = !inRound || playerHand.length > 2 || bankroll < currentBet;
 }
 
 function drawCard(hand) {
@@ -145,13 +178,35 @@ function drawCard(hand) {
     return card;
 }
 
-function endRound(message) {
+function endRound(message, outcome = "lose") {
     inRound = false;
     render({ hideDealerHoleCard: false });
-    setStatus(message);
-    if (shoeNeedsShuffle) {
-        setStatus(`${message} (Cut card reached — reshuffle next hand)`);
+
+    // Payout rules:
+    // - lose: you already paid the bet, nothing returned
+    // - push: return bet
+    // - win: return bet + winnings (1:1)
+    // - blackjack: return bet + winnings (3:2)
+    // - surrender: return half the bet (rounded down)
+    if (currentBet > 0) {
+        if (outcome === "push") {
+            bankroll += currentBet;
+        } else if (outcome === "win") {
+            bankroll += currentBet * 2;
+        } else if (outcome === "blackjack") {
+            bankroll += currentBet * 2 + Math.floor(currentBet / 2);
+            // Alternative clearer: bankroll += currentBet * 2 + Math.floor(currentBet / 2);
+        } else if (outcome === "surrender") {
+            bankroll += Math.floor(currentBet / 2);
+        }
     }
+
+    currentBet = 0;
+    updateBankrollUI();
+
+    betInputEl.disabled = false;
+
+    setStatus(message);
 }
 
 function checkImmediateOutcomes() {
@@ -160,15 +215,12 @@ function checkImmediateOutcomes() {
 
     // Natural blackjack checks (simple rules)
     if (playerHand.length === 2 && p === 21) {
-        if (dealerHand.length === 2 && d === 21) {
-            endRound("Push: both have Blackjack.");
-        } else {
-            endRound("You win: Blackjack!");
-        }
+        if (dealerHand.length === 2 && d === 21) endRound("Push: both have Blackjack.", "push");
+        else endRound("You win: Blackjack!", "blackjack");
         return true;
     }
     if (dealerHand.length === 2 && d === 21) {
-        endRound("Dealer wins: Blackjack.");
+        endRound("Dealer wins: Blackjack.", "lose");
         return true;
     }
     return false;
@@ -176,6 +228,26 @@ function checkImmediateOutcomes() {
 
 // ----- Actions -----
 function startNewGame() {
+    // Get and validate bet before deailing
+    const bet = getBetAmount();
+
+    if (bet <= 0) {
+        setStatus("Enter a valid bet.");
+        return;
+    }
+    if (bet > bankroll) {
+        setStatus("Not enough bankroll for that bet.");
+        return;
+    }
+
+    // Take the bet "onto the table"
+    currentBet = bet;
+    bankroll -= currentBet;
+    updateBankrollUI();
+
+    // prevent changing bet mid-hand
+    betInputEl.disabled = true;
+
     const deckCount = Number(deckCountSelect.value);
 
     // If first game, or shoe is low and we've flagged reshuffle -> rebuild shoe
@@ -193,7 +265,7 @@ function startNewGame() {
     drawCard(dealerHand);
 
     render({ hideDealerHoleCard: true });
-    setStatus("Your turn: Hit or Stand.");
+    setStatus(`Bet placed: $${currentBet}. Your turn: Hit or Stand.`);
 
     checkImmediateOutcomes();
 }
@@ -206,7 +278,7 @@ function hit() {
 
     const p = handValue(playerHand);
     if (p > 21) {
-        endRound("You bust. Dealer wins.");
+        endRound("You bust. Dealer wins.", "lose");
     } else if (p === 21) {
         // Auto-stand when 21
         stand();
@@ -232,18 +304,39 @@ function stand() {
     const d = handValue(dealerHand);
 
     if (d > 21) {
-        endRound("Dealer busts. You win!");
+        endRound("Dealer busts. You win!", "win");
         return;
     }
 
-    if (p > d) endRound(`You win! ${p} vs ${d}.`);
-    else if (p < d) endRound(`Dealer wins. ${d} vs ${p}.`);
-    else endRound(`Push (tie). ${p} vs ${d}.`);
+    if (p > d) endRound(`You win! ${p} vs ${d}.`, "win");
+    else if (p < d) endRound(`Dealer wins. ${d} vs ${p}.`, "lose");
+    else endRound(`Push (tie). ${p} vs ${d}.`, "push");
 }
 function surrender() {
     if (!inRound) return;
+    if (playerHand.length !== 2) {
+        setStatus("Surrender is only allowed before hitting.");
+        return;
+    }
+    endRound("You surrendered. Half bet returned.", "surrender");
+}
 
-    endRound("You surrendered. Dealer wins.");
+function double() {
+    if (!inRound) return;
+    if (playerHand.length !== 2) {
+        setStatus("Double is only allowed before hitting.");
+        return;
+    }
+
+    // Double the bet
+    bankroll -= currentBet;
+    currentBet *= 2;
+    updateBankrollUI();
+
+    // Draw one more card and end the round
+    drawCard(playerHand);
+    render({ hideDealerHoleCard: true });
+    stand();
 }
 
 // ----- Wire up buttons -----
@@ -251,8 +344,11 @@ newGameBtn.addEventListener("click", startNewGame);
 hitBtn.addEventListener("click", hit);
 standBtn.addEventListener("click", stand);
 surrenderBtn.addEventListener("click", surrender);
+doubleBtn.addEventListener("click", double);
+splitBtn.addEventListener("click", split);
 
 // Initial render
+updateBankrollUI();
 render({ hideDealerHoleCard: false });
 
 
