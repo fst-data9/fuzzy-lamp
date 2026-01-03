@@ -185,11 +185,17 @@ function stand() {
   else if (p < d) endRound(`Dealer wins. ${d} vs ${p}.`);
   else endRound(`Push (tie). ${p} vs ${d}.`);
 }
+function surrender() {
+  if (!inRound) return;
+
+  endRound("You surrendered. Dealer wins.");
+}
 
 // ----- Wire up buttons -----
 newGameBtn.addEventListener("click", startNewGame);
 hitBtn.addEventListener("click", hit);
 standBtn.addEventListener("click", stand);
+surrenderBtn.addEventListener("click", surrender);
 
 // Initial render
 render({ hideDealerHoleCard: false });
