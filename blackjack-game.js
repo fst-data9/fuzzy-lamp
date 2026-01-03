@@ -89,6 +89,7 @@ function render({ hideDealerHoleCard = false } = {}) {
   hitBtn.disabled = !inRound;
   standBtn.disabled = !inRound;
   newGameBtn.disabled = inRound;
+  surrenderBtn.disabled = !inRound;
 }
 
 function drawCard(hand) {
