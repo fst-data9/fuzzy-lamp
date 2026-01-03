@@ -64,6 +64,7 @@ const newGameBtn = document.getElementById("newGameBtn");
 const hitBtn = document.getElementById("hitBtn");
 const standBtn = document.getElementById("standBtn");
 const surrenderBtn = document.getElementById("surrenderBtn");
+const deckCountSelect = document.getElementById("deckCountSelect");
 
 function setStatus(msg) {
     statusEl.textContent = msg;
@@ -126,13 +127,17 @@ function checkImmediateOutcomes() {
 
 // ----- Actions -----
 function startNewGame() {
-    deck = createDeck();
+    const deckCount = Number(deckCountSelect.value);
+    deck = [];
+    for (let i = 0; i < deckCount; i++) {
+        deck.push(...createDeck());
+    }
     shuffle(deck);
 
     playerHand = [];
     dealerHand = [];
     inRound = true;
-
+    // console.log("Shuffled deck:", deck);
     // Initial deal: player, dealer, player, dealer
     drawCard(playerHand);
     drawCard(dealerHand);
