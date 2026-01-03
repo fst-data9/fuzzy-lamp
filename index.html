@@ -1,41 +1,69 @@
 <!doctype html>
 <html lang="en">
+
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Basic Blackjack</title>
-  <style>
-    body { font-family: system-ui, Arial; padding: 24px; max-width: 700px; margin: 0 auto; }
-    button { margin-right: 8px; margin-top: 8px; padding: 10px 14px; }
-    .row { margin: 12px 0; }
-    .cards { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-    .status { margin-top: 12px; padding: 10px; border: 1px solid #ddd; border-radius: 10px; }
-  </style>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Basic Blackjack</title>
+    <style>
+        body {
+            font-family: system-ui, Arial;
+            padding: 24px;
+            max-width: 700px;
+            margin: 0 auto;
+            background-color: #0f5132;
+            /*felt green */
+            color: #f1f5f3;
+        }
+
+        button {
+            margin-right: 8px;
+            margin-top: 8px;
+            padding: 10px 14px;
+        }
+
+        .row {
+            margin: 12px 0;
+        }
+
+        .cards {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        }
+
+        .status {
+            margin-top: 12px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 10px;
+        }
+    </style>
 </head>
+
 <body>
-  <h1>Blackjack</h1>
+    <h1>Blackjack</h1>
 
-  <div class="row">
-    <strong>Dealer:</strong>
-    <div id="dealerCards" class="cards"></div>
-    <div id="dealerTotal"></div>
-  </div>
+    <div class="row">
+        <strong>Dealer:</strong>
+        <div id="dealerCards" class="cards"></div>
+        <div id="dealerTotal"></div>
+    </div>
 
-  <div class="row">
-    <strong>You:</strong>
-    <div id="playerCards" class="cards"></div>
-    <div id="playerTotal"></div>
-  </div>
+    <div class="row">
+        <strong>You:</strong>
+        <div id="playerCards" class="cards"></div>
+        <div id="playerTotal"></div>
+    </div>
 
-  <div class="row">
-    <button id="newGameBtn">New Game</button>
-    <button id="hitBtn" disabled>Hit</button>
-    <button id="standBtn" disabled>Stand</button>
-    <button id="surrenderBtn" disabled>Surrender</button>
-  </div>
+    <div class="row">
+        <button id="newGameBtn">New Game</button>
+        <button id="hitBtn" disabled>Hit</button>
+        <button id="standBtn" disabled>Stand</button>
+        <button id="surrenderBtn" disabled>Surrender</button>
+    </div>
 
-  <div id="status" class="status">Click “New Game”.</div>
+    <div id="status" class="status">Click “New Game”.</div>
 
-  <script src="blackjack-game.js"></script>
+    <script src="blackjack-game.js"></script>
 </body>
+
 </html>
