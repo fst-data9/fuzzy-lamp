@@ -44,6 +44,20 @@
             border-radius: 12px;
             opacity: 0.9;
         }
+
+        .hand {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-top: 8px;
+        }
+
+        .hand img {
+            width: 72px;
+            height: auto;
+            border-radius: 8px;
+        }
     </style>
 </head>
 
@@ -52,13 +66,13 @@
 
     <div class="row">
         <strong>Dealer:</strong>
-        <div id="dealerCards" class="cards"></div>
+        <div id="dealerCards" class="cards hand"></div>
         <div id="dealerTotal"></div>
     </div>
 
     <div class="row">
         <strong>You:</strong>
-        <div id="playerCards" class="cards"></div>
+        <div id="playerCards" class="cards hand"></div>
         <div id="playerTotal"></div>
     </div>
 

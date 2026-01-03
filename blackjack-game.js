@@ -66,11 +66,37 @@ const standBtn = document.getElementById("standBtn");
 const surrenderBtn = document.getElementById("surrenderBtn");
 const deckCountSelect = document.getElementById("deckCountSelect");
 
+function suitCode(suit) {
+    // match your suit symbols to filename letters
+    if (suit === "♠") return "S";
+    if (suit === "♥") return "H";
+    if (suit === "♦") return "D";
+    if (suit === "♣") return "C";
+    return "";
+}
+function cardImageSrc(card) {
+    return `images/cards/${card.rank}${suitCode(card.suit)}.svg`;
+}
 function setStatus(msg) {
     statusEl.textContent = msg;
 }
+function renderHand(containerEl, hand, { hideSecondCard = false } = {}) {
+    containerEl.innerHTML = ""; // clear existing
 
+    hand.forEach((card, idx) => {
+        const img = document.createElement("img");
+
+        const shouldHide = hideSecondCard && idx === 1;
+        img.src = shouldHide ? "images/cards/RED_BACK.svg" : cardImageSrc(card);
+        img.alt = shouldHide ? "Hidden card" : cardToString(card);
+
+        containerEl.appendChild(img);
+    });
+}
 function render({ hideDealerHoleCard = false } = {}) {
+
+    renderHand(dealerCardsEl, dealerHand, { hideSecondCard: hideDealerHoleCard });
+    renderHand(playerCardsEl, playerHand);
     // Dealer
     if (hideDealerHoleCard) {
         const shown = dealerHand[0] ? [dealerHand[0]] : [];
@@ -206,3 +232,9 @@ surrenderBtn.addEventListener("click", surrender);
 
 // Initial render
 render({ hideDealerHoleCard: false });
+
+
+// playing cards thanks to 
+/* Vectorized Playing Cards 1.3- http://code.google.com/p/vectorized-playing-cards/
+Copyright 2011 - Chris Aguilar
+Licensed under LGPL 3 - www.gnu.org/copyleft/lesser.html */
