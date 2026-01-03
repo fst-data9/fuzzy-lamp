@@ -23,7 +23,22 @@ function shuffle(deck) {
 function cardToString(card) {
     return `${card.rank}${card.suit}`;
 }
+function buildAndShuffleShoe(deckCount) {
+    deck = [];
+    for (let i = 0; i < deckCount; i++) deck.push(...createDeck());
+    shuffle(deck);
 
+    // Typical casino: stop dealing with ~1 to 1.5 decks remaining.
+    const minUndealtDecks = 1.0;
+    const maxUndealtDecks = 1.5;
+
+    const undealtDecks =
+        minUndealtDecks + Math.random() * (maxUndealtDecks - minUndealtDecks);
+
+    cutCardRemaining = Math.floor(undealtDecks * 52);
+
+    shoeNeedsShuffle = false;
+}
 function handValue(hand) {
     // Count Aces as 11 initially, then reduce to 1 as needed
     let total = 0;
@@ -52,6 +67,8 @@ let deck = [];
 let playerHand = [];
 let dealerHand = [];
 let inRound = false;
+let shoeNeedsShuffle = false;
+let cutCardRemaining = 0; // when deck.length <= this, cut card is "reached"
 
 // ----- UI elements -----
 const dealerCardsEl = document.getElementById("dealerCards");
@@ -95,22 +112,19 @@ function renderHand(containerEl, hand, { hideSecondCard = false } = {}) {
 }
 function render({ hideDealerHoleCard = false } = {}) {
 
+    //  draw images
     renderHand(dealerCardsEl, dealerHand, { hideSecondCard: hideDealerHoleCard });
     renderHand(playerCardsEl, playerHand);
-    // Dealer
+
+    // totals stay as text
     if (hideDealerHoleCard) {
-        const shown = dealerHand[0] ? [dealerHand[0]] : [];
-        dealerCardsEl.textContent = shown.map(cardToString).join(" ") + (dealerHand.length > 1 ? "  ??" : "");
         dealerTotalEl.textContent = dealerHand[0]
             ? `Total: ${handValue([dealerHand[0]])} (+ hidden)`
             : "Total: 0";
     } else {
-        dealerCardsEl.textContent = dealerHand.map(cardToString).join(" ");
         dealerTotalEl.textContent = `Total: ${handValue(dealerHand)}`;
     }
 
-    // Player
-    playerCardsEl.textContent = playerHand.map(cardToString).join(" ");
     playerTotalEl.textContent = `Total: ${handValue(playerHand)}`;
 
     hitBtn.disabled = !inRound;
@@ -122,6 +136,12 @@ function render({ hideDealerHoleCard = false } = {}) {
 function drawCard(hand) {
     const card = deck.pop();
     hand.push(card);
+
+    // If we've reached the cut card, reshuffle AFTER this hand finishes
+    if (!shoeNeedsShuffle && deck.length <= cutCardRemaining) {
+        shoeNeedsShuffle = true;
+    }
+
     return card;
 }
 
@@ -129,6 +149,9 @@ function endRound(message) {
     inRound = false;
     render({ hideDealerHoleCard: false });
     setStatus(message);
+    if (shoeNeedsShuffle) {
+        setStatus(`${message} (Cut card reached — reshuffle next hand)`);
+    }
 }
 
 function checkImmediateOutcomes() {
@@ -154,24 +177,23 @@ function checkImmediateOutcomes() {
 // ----- Actions -----
 function startNewGame() {
     const deckCount = Number(deckCountSelect.value);
-    deck = [];
-    for (let i = 0; i < deckCount; i++) {
-        deck.push(...createDeck());
+
+    // If first game, or shoe is low and we've flagged reshuffle -> rebuild shoe
+    if (deck.length === 0 || shoeNeedsShuffle) {
+        buildAndShuffleShoe(deckCount);
     }
-    shuffle(deck);
 
     playerHand = [];
     dealerHand = [];
     inRound = true;
-    // console.log("Shuffled deck:", deck);
-    // Initial deal: player, dealer, player, dealer
+
     drawCard(playerHand);
     drawCard(dealerHand);
     drawCard(playerHand);
     drawCard(dealerHand);
 
     render({ hideDealerHoleCard: true });
-    setStatus("Your turn: Hit, Stand or Surrender.");
+    setStatus("Your turn: Hit or Stand.");
 
     checkImmediateOutcomes();
 }
