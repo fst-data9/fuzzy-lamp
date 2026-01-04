@@ -202,10 +202,10 @@ function render({ hideDealerHoleCard = false } = {}) {
     // dealer
     renderHand(dealerCardsEl, dealerHand, { hideSecondCard: hideDealerHoleCard });
 
-    // NEW player UI
+    // player UI
     renderPlayerHandsUI();
 
-    // dealer totals (keep your existing logic)
+    // dealer totals
     if (hideDealerHoleCard) {
         dealerTotalEl.textContent = dealerHand[0]
             ? `Total: ${handValue([dealerHand[0]])} (+ hidden)`
@@ -214,16 +214,22 @@ function render({ hideDealerHoleCard = false } = {}) {
         dealerTotalEl.textContent = `Total: ${handValue(dealerHand)}`;
     }
 
-    // buttons etc... keep your existing logic below
+    // buttons
     const hand = currentHand();
     const handBet = playerHands ? bets[activeHandIndex] : currentBet;
 
-    hitBtn.disabled = !inRound;
-    standBtn.disabled = !inRound;
-    newGameBtn.disabled = inRound;
+    const handFinished =
+        (hand && hand._done) ||
+        (playerHands && handOutcomes && handOutcomes[activeHandIndex] === "surrender");
 
-    surrenderBtn.disabled = !inRound || hand.length !== 2;
-    doubleBtn.disabled = !inRound || hand.length !== 2 || bankroll < handBet;
+    hitBtn.disabled = !inRound || handFinished;
+    standBtn.disabled = !inRound || handFinished;
+
+    // surrender: first decision only, and usually not after split if you want that rule
+    surrenderBtn.disabled = !inRound || handFinished || hand.length !== 2;
+
+    // double: first decision only + must afford to match current hand bet
+    doubleBtn.disabled = !inRound || handFinished || hand.length !== 2 || bankroll < handBet;
 
     const canSplit =
         inRound &&
@@ -233,6 +239,7 @@ function render({ hideDealerHoleCard = false } = {}) {
 
     splitBtn.disabled = !canSplit;
 }
+
 
 
 function endRound(message, outcome = "lose") {
@@ -347,25 +354,39 @@ function hit() {
 
     const hand = currentHand();
 
+    // If this hand is already finished, ignore input
+    if (hand && hand._done) return;
+
     drawCard(hand);
     render({ hideDealerHoleCard: true });
 
     const p = handValue(hand);
 
     if (p > 21) {
-        // bust only ends the round if it's the last hand
-        setStatus(`Hand ${playerHands ? activeHandIndex + 1 : 1} busts.`);
+        // 
+        if (!playerHands) {
+            endRound("You bust. Dealer wins.", "lose");
+            return;
+        }
+
+        // ✅ Split: bust ends only this hand, then move on
+        hand._done = true;
+        hand._result = "bust";
+        setStatus(`Hand ${activeHandIndex + 1} busts.`);
         advanceHandOrResolve();
-    } else if (p === 21) {
-        // Auto-stand on 21 for this hand only
-        stand();
-    } else {
-        setStatus("Hit or Stand?");
+        return;
     }
+
+    if (p === 21) {
+        stand();
+        return;
+    }
+
+    setStatus(`Playing Hand ${playerHands ? activeHandIndex + 1 : 1}. Hit or Stand?`);
 }
 
+
 function dealerPlay() {
-    // Dealer draws until 17 or more (stands on soft 17 in this simple version)
     while (handValue(dealerHand) < 17) {
         drawCard(dealerHand);
     }
@@ -374,8 +395,13 @@ function dealerPlay() {
 function stand() {
     if (!inRound) return;
 
+    const hand = currentHand();
+
     // If split, standing ends ONLY the current hand
     if (playerHands) {
+        hand._done = true;
+        hand._result = "stand";
+
         setStatus(`Standing on Hand ${activeHandIndex + 1}.`);
         advanceHandOrResolve();
         return;
@@ -397,6 +423,7 @@ function stand() {
     else endRound(`Push (tie). ${p} vs ${d}.`, "push");
 }
 
+
 function double() {
     if (!inRound) return;
 
@@ -407,7 +434,6 @@ function double() {
         return;
     }
 
-    // Choose which bet we're doubling
     const i = activeHandIndex;
     const betToDouble = playerHands ? bets[i] : currentBet;
 
@@ -416,7 +442,6 @@ function double() {
         return;
     }
 
-    // Pay the extra amount
     bankroll -= betToDouble;
 
     if (playerHands) {
@@ -427,18 +452,34 @@ function double() {
 
     updateBankrollUI();
 
-    // Draw one card and end THIS hand (or whole round if not split)
+    // One card only
     drawCard(hand);
     render({ hideDealerHoleCard: true });
 
+    // Hand is finished after doubling
     if (playerHands) {
-        // end only this hand
-        setStatus(`Doubled on Hand ${i + 1}.`);
+        hand._done = true;
+        hand._result = "double";
+
+        const p = handValue(hand);
+        if (p > 21) {
+            hand._result = "bust";
+            setStatus(`Hand ${i + 1} busts after doubling.`);
+        } else {
+            setStatus(`Doubled on Hand ${i + 1}.`);
+        }
+
         advanceHandOrResolve();
     } else {
+        const p = handValue(hand);
+        if (p > 21) {
+            endRound("You busted after doubling. Dealer wins.", "lose");
+            return;
+        }
         stand();
     }
 }
+
 
 function split() {
     if (!inRound) return;
@@ -489,25 +530,41 @@ function split() {
 }
 
 function advanceHandOrResolve() {
-    if (!playerHands) return; // safety
+    if (!playerHands || playerHands.length === 0) return;
 
-    // If there is another hand to play, move to it
-    if (activeHandIndex < playerHands.length - 1) {
-        activeHandIndex++;
-        // keep compatibility with code that still references playerHand
-        playerHand = playerHands[activeHandIndex];
+    // Find next hand that is not done AND not surrendered
+    let nextIndex = -1;
+    for (let i = 0; i < playerHands.length; i++) {
+        if (i <= activeHandIndex) continue;
+
+        const handDone = !!playerHands[i]._done;
+        const surrendered = handOutcomes && handOutcomes[i] === "surrender";
+
+        if (!handDone && !surrendered) {
+            nextIndex = i;
+            break;
+        }
+    }
+
+    // Move to next playable hand if any
+    if (nextIndex !== -1) {
+        activeHandIndex = nextIndex;
+        playerHand = playerHands[activeHandIndex]; // compat
 
         render({ hideDealerHoleCard: true });
         setStatus(`Playing Hand ${activeHandIndex + 1}. Hit or Stand?`);
         return;
     }
 
-    // All hands finished -> dealer plays once
+    // Otherwise all hands are finished -> dealer plays once and settle
     dealerPlay();
     render({ hideDealerHoleCard: false });
 
     settleSplitHands();
+
+    // NOTE: settleSplitHands() calls endRound(), which sets inRound = false
 }
+
 
 
 
@@ -578,15 +635,18 @@ function surrender() {
 
     // Split: surrender only this hand
     const i = activeHandIndex;
-    handOutcomes[i] = "surrender";
 
-    // Refund half of THIS hand's bet now (since endRound() is single-bet only)
+    handOutcomes[i] = "surrender";
+    hand._done = true;
+    hand._result = "surrender";
+
     bankroll += Math.floor(bets[i] / 2);
     updateBankrollUI();
 
     setStatus(`Hand ${i + 1} surrendered.`);
     advanceHandOrResolve();
 }
+
 // ----- Wire up buttons -----
 newGameBtn.addEventListener("click", startNewGame);
 hitBtn.addEventListener("click", hit);
