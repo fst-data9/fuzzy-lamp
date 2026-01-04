@@ -1,6 +1,8 @@
-// ----- Card / Deck helpers -----
+// ----- Card / Deck helpers -----pushchange
 const SUITS = ["♠", "♥", "♦", "♣"];
 const RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
+const bankrollAmtEl = document.getElementById("bankrollAmt");
+const betInputEl = document.getElementById("betInput");
 
 function createDeck() {
     const deck = [];
@@ -23,7 +25,27 @@ function shuffle(deck) {
 function cardToString(card) {
     return `${card.rank}${card.suit}`;
 }
+function buildAndShuffleShoe(deckCount) {
+    deck = [];
+    for (let i = 0; i < deckCount; i++) deck.push(...createDeck());
+    shuffle(deck);
 
+    // Typical casino: stop dealing with ~1 to 1.5 decks remaining.
+    const minUndealtDecks = 1.0;
+    const maxUndealtDecks = 1.5;
+
+    const undealtDecks =
+        minUndealtDecks + Math.random() * (maxUndealtDecks - minUndealtDecks);
+
+    cutCardRemaining = Math.floor(undealtDecks * 52);
+
+    shoeNeedsShuffle = false;
+}
+function cardValueForSplit(card) {
+    if (card.rank === "A") return 11;                 // treat Ace as its own (no A+K split)
+    if (["K", "Q", "J"].includes(card.rank)) return 10;
+    return Number(card.rank);                         // "2".."10"
+}
 function handValue(hand) {
     // Count Aces as 11 initially, then reduce to 1 as needed
     let total = 0;
@@ -47,60 +69,200 @@ function handValue(hand) {
     return total;
 }
 
+// Betting helpers
+function updateBankrollUI() {
+    bankrollAmtEl.textContent = bankroll;
+}
+
+function getBetAmount() {
+    const bet = Math.floor(Number(betInputEl.value));
+    if (!Number.isFinite(bet) || bet <= 0) return 0;
+    return bet;
+}
+
+function currentHand() {
+    return playerHands ? playerHands[activeHandIndex] : playerHand;
+}
+
 // ----- Game state -----
 let deck = [];
 let playerHand = [];
 let dealerHand = [];
 let inRound = false;
+let shoeNeedsShuffle = false;
+let cutCardRemaining = 0; // when deck.length <= this, cut card is "reached"
+let bankroll = 1000;
+let currentBet = 0;
+let playerHands = null;      // null when not split, otherwise [hand1, hand2]
+let activeHandIndex = 0;
+let bets = null;
+let handOutcomes = null; // null when not split; otherwise like ["", ""] or [null, null]
+
 
 // ----- UI elements -----
 const dealerCardsEl = document.getElementById("dealerCards");
 const dealerTotalEl = document.getElementById("dealerTotal");
-const playerCardsEl = document.getElementById("playerCards");
-const playerTotalEl = document.getElementById("playerTotal");
+const handPanelEls = [
+    document.getElementById("handPanel0"),
+    document.getElementById("handPanel1"),
+];
+
+const playerCardsEls = [
+    document.getElementById("playerCards0"),
+    document.getElementById("playerCards1"),
+];
+
+const playerTotalEls = [
+    document.getElementById("playerTotal0"),
+    document.getElementById("playerTotal1"),
+];
+
+const handBetEls = [
+    document.getElementById("handBet0"),
+    document.getElementById("handBet1"),
+];
 const statusEl = document.getElementById("status");
 
 const newGameBtn = document.getElementById("newGameBtn");
 const hitBtn = document.getElementById("hitBtn");
 const standBtn = document.getElementById("standBtn");
 const surrenderBtn = document.getElementById("surrenderBtn");
+const deckCountSelect = document.getElementById("deckCountSelect");
+const doubleBtn = document.getElementById("doubleBtn");
+const splitBtn = document.getElementById("splitBtn");
 
+function suitCode(suit) {
+    // match your suit symbols to filename letters
+    if (suit === "♠") return "S";
+    if (suit === "♥") return "H";
+    if (suit === "♦") return "D";
+    if (suit === "♣") return "C";
+    return "";
+}
+function cardImageSrc(card) {
+    return `images/cards/${card.rank}${suitCode(card.suit)}.svg`;
+}
 function setStatus(msg) {
     statusEl.textContent = msg;
 }
+function renderHand(containerEl, hand, { hideSecondCard = false } = {}) {
+    const existing = containerEl.querySelectorAll("img");
 
+    // 1) If the hand got smaller (new round), clear and rebuild once
+    if (existing.length > hand.length) {
+        containerEl.innerHTML = "";
+    }
+
+    // 2) Ensure we have one <img> per card; append only NEW cards
+    for (let idx = containerEl.querySelectorAll("img").length; idx < hand.length; idx++) {
+        const img = document.createElement("img");
+        img.alt = "Card";
+
+        // Only new cards should animate
+        img.classList.add("dealt");
+        img.style.animationDelay = `${idx * 60}ms`;
+
+        containerEl.appendChild(img);
+    }
+
+    // 3) Update src for each card image (no re-creation, so no flashing)
+    const imgs = containerEl.querySelectorAll("img");
+    hand.forEach((card, idx) => {
+        const hidden = hideSecondCard && idx === 1;
+        imgs[idx].src = hidden ? "images/cards/RED_BACK.svg" : cardImageSrc(card);
+        imgs[idx].alt = hidden ? "Hidden card" : `${card.rank}${card.suit}`;
+    });
+}
+function renderPlayerHandsUI() {
+    const hands = playerHands ? playerHands : [playerHand];
+
+    for (let i = 0; i < 2; i++) {
+        const panel = handPanelEls[i];
+
+        // hide Hand 2 unless split
+        if (!hands[i]) {
+            panel.style.display = "none";
+            continue;
+        }
+
+        panel.style.display = "";
+
+        const isActive = playerHands ? i === activeHandIndex : true;
+        panel.classList.toggle("active", isActive);
+        panel.classList.toggle("inactive", playerHands && !isActive);
+
+        const bet = playerHands ? bets[i] : currentBet;
+        handBetEls[i].textContent = bet > 0 ? `Bet: $${bet}` : "";
+
+        renderHand(playerCardsEls[i], hands[i]);
+        playerTotalEls[i].textContent = `Total: ${handValue(hands[i])}`;
+    }
+}
 function render({ hideDealerHoleCard = false } = {}) {
-    // Dealer
+    // dealer
+    renderHand(dealerCardsEl, dealerHand, { hideSecondCard: hideDealerHoleCard });
+
+    // NEW player UI
+    renderPlayerHandsUI();
+
+    // dealer totals (keep your existing logic)
     if (hideDealerHoleCard) {
-        const shown = dealerHand[0] ? [dealerHand[0]] : [];
-        dealerCardsEl.textContent = shown.map(cardToString).join(" ") + (dealerHand.length > 1 ? "  ??" : "");
         dealerTotalEl.textContent = dealerHand[0]
             ? `Total: ${handValue([dealerHand[0]])} (+ hidden)`
             : "Total: 0";
     } else {
-        dealerCardsEl.textContent = dealerHand.map(cardToString).join(" ");
         dealerTotalEl.textContent = `Total: ${handValue(dealerHand)}`;
     }
 
-    // Player
-    playerCardsEl.textContent = playerHand.map(cardToString).join(" ");
-    playerTotalEl.textContent = `Total: ${handValue(playerHand)}`;
+    // buttons etc... keep your existing logic below
+    const hand = currentHand();
+    const handBet = playerHands ? bets[activeHandIndex] : currentBet;
 
     hitBtn.disabled = !inRound;
     standBtn.disabled = !inRound;
     newGameBtn.disabled = inRound;
-    surrenderBtn.disabled = !inRound;
+
+    surrenderBtn.disabled = !inRound || hand.length !== 2;
+    doubleBtn.disabled = !inRound || hand.length !== 2 || bankroll < handBet;
+
+    const canSplit =
+        inRound &&
+        hand.length === 2 &&
+        cardValueForSplit(hand[0]) === cardValueForSplit(hand[1]) &&
+        bankroll >= handBet;
+
+    splitBtn.disabled = !canSplit;
 }
 
-function drawCard(hand) {
-    const card = deck.pop();
-    hand.push(card);
-    return card;
-}
 
-function endRound(message) {
+function endRound(message, outcome = "lose") {
     inRound = false;
     render({ hideDealerHoleCard: false });
+
+    // Payout rules:
+    // - lose: you already paid the bet, nothing returned
+    // - push: return bet
+    // - win: return bet + winnings (1:1)
+    // - blackjack: return bet + winnings (3:2)
+    // - surrender: return half the bet (rounded down)
+    if (currentBet > 0) {
+        if (outcome === "push") {
+            bankroll += currentBet;
+        } else if (outcome === "win") {
+            bankroll += currentBet * 2;
+        } else if (outcome === "blackjack") {
+            bankroll += currentBet * 2 + Math.floor(currentBet / 2);
+            // Alternative clearer: bankroll += currentBet * 2 + Math.floor(currentBet / 2);
+        } else if (outcome === "surrender") {
+            bankroll += Math.floor(currentBet / 2);
+        }
+    }
+
+    currentBet = 0;
+    updateBankrollUI();
+
+    betInputEl.disabled = false;
+
     setStatus(message);
 }
 
@@ -110,37 +272,72 @@ function checkImmediateOutcomes() {
 
     // Natural blackjack checks (simple rules)
     if (playerHand.length === 2 && p === 21) {
-        if (dealerHand.length === 2 && d === 21) {
-            endRound("Push: both have Blackjack.");
-        } else {
-            endRound("You win: Blackjack!");
-        }
+        if (dealerHand.length === 2 && d === 21) endRound("Push: both have Blackjack.", "push");
+        else endRound("You win: Blackjack!", "blackjack");
         return true;
     }
     if (dealerHand.length === 2 && d === 21) {
-        endRound("Dealer wins: Blackjack.");
+        endRound("Dealer wins: Blackjack.", "lose");
         return true;
     }
     return false;
 }
+function drawCard(hand) {
+    const card = deck.pop();
+    if (!card) {
+        setStatus("No cards left in shoe. Reshuffle needed.");
+        return null;
+    }
 
+    hand.push(card);
+
+    // If we've reached the cut card, reshuffle AFTER this hand finishes
+    if (!shoeNeedsShuffle && deck.length <= cutCardRemaining) {
+        shoeNeedsShuffle = true;
+    }
+
+    return card;
+}
 // ----- Actions -----
 function startNewGame() {
-    deck = createDeck();
-    shuffle(deck);
+    // Get and validate bet before deailing
+    const bet = getBetAmount();
+
+    if (bet <= 0) {
+        setStatus("Enter a valid bet.");
+        return;
+    }
+    if (bet > bankroll) {
+        setStatus("Not enough bankroll for that bet.");
+        return;
+    }
+
+    // Take the bet "onto the table"
+    currentBet = bet;
+    bankroll -= currentBet;
+    updateBankrollUI();
+
+    // prevent changing bet mid-hand
+    betInputEl.disabled = true;
+
+    const deckCount = Number(deckCountSelect.value);
+
+    // If first game, or shoe is low and we've flagged reshuffle -> rebuild shoe
+    if (deck.length === 0 || shoeNeedsShuffle) {
+        buildAndShuffleShoe(deckCount);
+    }
 
     playerHand = [];
     dealerHand = [];
     inRound = true;
 
-    // Initial deal: player, dealer, player, dealer
     drawCard(playerHand);
     drawCard(dealerHand);
     drawCard(playerHand);
     drawCard(dealerHand);
 
     render({ hideDealerHoleCard: true });
-    setStatus("Your turn: Hit, Stand or Surrender.");
+    setStatus(`Bet placed: $${currentBet}. Your turn: Hit or Stand.`);
 
     checkImmediateOutcomes();
 }
@@ -148,14 +345,19 @@ function startNewGame() {
 function hit() {
     if (!inRound) return;
 
-    drawCard(playerHand);
+    const hand = currentHand();
+
+    drawCard(hand);
     render({ hideDealerHoleCard: true });
 
-    const p = handValue(playerHand);
+    const p = handValue(hand);
+
     if (p > 21) {
-        endRound("You bust. Dealer wins.");
+        // bust only ends the round if it's the last hand
+        setStatus(`Hand ${playerHands ? activeHandIndex + 1 : 1} busts.`);
+        advanceHandOrResolve();
     } else if (p === 21) {
-        // Auto-stand when 21
+        // Auto-stand on 21 for this hand only
         stand();
     } else {
         setStatus("Hit or Stand?");
@@ -172,32 +374,233 @@ function dealerPlay() {
 function stand() {
     if (!inRound) return;
 
-    // Dealer reveals and plays
+    // If split, standing ends ONLY the current hand
+    if (playerHands) {
+        setStatus(`Standing on Hand ${activeHandIndex + 1}.`);
+        advanceHandOrResolve();
+        return;
+    }
+
+    // Not split = your original logic
     dealerPlay();
 
     const p = handValue(playerHand);
     const d = handValue(dealerHand);
 
     if (d > 21) {
-        endRound("Dealer busts. You win!");
+        endRound("Dealer busts. You win!", "win");
         return;
     }
 
-    if (p > d) endRound(`You win! ${p} vs ${d}.`);
-    else if (p < d) endRound(`Dealer wins. ${d} vs ${p}.`);
-    else endRound(`Push (tie). ${p} vs ${d}.`);
+    if (p > d) endRound(`You win! ${p} vs ${d}.`, "win");
+    else if (p < d) endRound(`Dealer wins. ${d} vs ${p}.`, "lose");
+    else endRound(`Push (tie). ${p} vs ${d}.`, "push");
 }
+
+function double() {
+    if (!inRound) return;
+
+    const hand = currentHand();
+
+    if (hand.length !== 2) {
+        setStatus("Double is only allowed before hitting.");
+        return;
+    }
+
+    // Choose which bet we're doubling
+    const i = activeHandIndex;
+    const betToDouble = playerHands ? bets[i] : currentBet;
+
+    if (bankroll < betToDouble) {
+        setStatus("Not enough bankroll to double.");
+        return;
+    }
+
+    // Pay the extra amount
+    bankroll -= betToDouble;
+
+    if (playerHands) {
+        bets[i] *= 2;
+    } else {
+        currentBet *= 2;
+    }
+
+    updateBankrollUI();
+
+    // Draw one card and end THIS hand (or whole round if not split)
+    drawCard(hand);
+    render({ hideDealerHoleCard: true });
+
+    if (playerHands) {
+        // end only this hand
+        setStatus(`Doubled on Hand ${i + 1}.`);
+        advanceHandOrResolve();
+    } else {
+        stand();
+    }
+}
+
+function split() {
+    if (!inRound) return;
+
+    if (playerHand.length !== 2) {
+        setStatus("Split is only allowed with two cards.");
+        return;
+    }
+
+    const v0 = cardValueForSplit(playerHand[0]);
+    const v1 = cardValueForSplit(playerHand[1]);
+
+    if (v0 !== v1) {
+        setStatus("Split is only allowed with matching value (e.g., Q+K, 10+J) or a pair.");
+        return;
+    }
+
+    // Need enough bankroll to place the additional bet (same as currentBet)
+    if (bankroll < currentBet) {
+        setStatus("Not enough bankroll to split.");
+        return;
+    }
+
+    // Take the extra bet (DO NOT double currentBet)
+    bankroll -= currentBet;
+    updateBankrollUI();
+
+    // Split into 2 hands
+    const secondCard = playerHand.pop();
+    const firstHand = [playerHand[0]];
+    const secondHand = [secondCard];
+
+    // Save both hands + per-hand bets
+    playerHands = [firstHand, secondHand];
+    bets = [currentBet, currentBet];
+    activeHandIndex = 0;
+    handOutcomes = [null, null];
+
+    // Deal one card to each hand (common rule)
+    drawCard(playerHands[0]);
+    drawCard(playerHands[1]);
+
+    // Keep compatibility with your hit/stand which uses playerHand
+    playerHand = playerHands[0];
+
+    render({ hideDealerHoleCard: true });
+    setStatus("Split! Playing Hand 1. Hit or Stand?");
+}
+
+function advanceHandOrResolve() {
+    if (!playerHands) return; // safety
+
+    // If there is another hand to play, move to it
+    if (activeHandIndex < playerHands.length - 1) {
+        activeHandIndex++;
+        // keep compatibility with code that still references playerHand
+        playerHand = playerHands[activeHandIndex];
+
+        render({ hideDealerHoleCard: true });
+        setStatus(`Playing Hand ${activeHandIndex + 1}. Hit or Stand?`);
+        return;
+    }
+
+    // All hands finished -> dealer plays once
+    dealerPlay();
+    render({ hideDealerHoleCard: false });
+
+    settleSplitHands();
+}
+
+
+
+function payoutForOutcome(bet, outcome) {
+    // returns how much money is RETURNED to bankroll (not net profit)
+    if (outcome === "push") return bet;
+    if (outcome === "win") return bet * 2;
+    if (outcome === "blackjack") return bet * 2 + Math.floor(bet / 2);
+    if (outcome === "surrender") return Math.floor(bet / 2);
+    return 0; // lose
+}
+
+function settleSplitHands() {
+    const d = handValue(dealerHand);
+    let summary = [];
+
+    for (let i = 0; i < playerHands.length; i++) {
+        // If this hand surrendered, skip payout (already refunded half in surrender())
+        if (handOutcomes && handOutcomes[i] === "surrender") {
+            summary.push(`Hand ${i + 1}: SURRENDER`);
+            continue;
+        }
+
+        const hand = playerHands[i];
+        const p = handValue(hand);
+        const bet = bets[i];
+
+        let outcome;
+        if (p > 21) outcome = "lose";
+        else if (d > 21) outcome = "win";
+        else if (p > d) outcome = "win";
+        else if (p < d) outcome = "lose";
+        else outcome = "push";
+
+        bankroll += payoutForOutcome(bet, outcome);
+        summary.push(`Hand ${i + 1}: ${outcome.toUpperCase()} (${p} vs ${d})`);
+    }
+
+    updateBankrollUI();
+
+    // clear split state
+    playerHands = null;
+    bets = null;
+    activeHandIndex = 0;
+    handOutcomes = null;
+
+    // prevent endRound() from paying again
+    currentBet = 0;
+
+    endRound(summary.join(" | "), "lose");
+}
+
 function surrender() {
     if (!inRound) return;
 
-    endRound("You surrendered. Dealer wins.");
-}
+    const hand = currentHand();
 
+    if (hand.length !== 2) {
+        setStatus("Surrender is only allowed on your first two cards.");
+        return;
+    }
+
+    // Non-split: your existing payout logic
+    if (!playerHands) {
+        endRound("You surrendered. Half your bet is returned.", "surrender");
+        return;
+    }
+
+    // Split: surrender only this hand
+    const i = activeHandIndex;
+    handOutcomes[i] = "surrender";
+
+    // Refund half of THIS hand's bet now (since endRound() is single-bet only)
+    bankroll += Math.floor(bets[i] / 2);
+    updateBankrollUI();
+
+    setStatus(`Hand ${i + 1} surrendered.`);
+    advanceHandOrResolve();
+}
 // ----- Wire up buttons -----
 newGameBtn.addEventListener("click", startNewGame);
 hitBtn.addEventListener("click", hit);
 standBtn.addEventListener("click", stand);
 surrenderBtn.addEventListener("click", surrender);
+doubleBtn.addEventListener("click", double);
+splitBtn.addEventListener("click", split);
 
 // Initial render
+updateBankrollUI();
 render({ hideDealerHoleCard: false });
+
+
+// playing cards thanks to 
+/* Vectorized Playing Cards 1.3- http://code.google.com/p/vectorized-playing-cards/
+Copyright 2011 - Chris Aguilar
+Licensed under LGPL 3 - www.gnu.org/copyleft/lesser.html */

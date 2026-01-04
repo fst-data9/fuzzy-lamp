@@ -4,16 +4,23 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Basic Blackjack</title>
+    <title>Basic Blackjack Training</title>
+
     <style>
         body {
             font-family: system-ui, Arial;
             padding: 24px;
-            max-width: 700px;
+            max-width: 760px;
             margin: 0 auto;
             background-color: #0f5132;
-            /*felt green */
             color: #f1f5f3;
+        }
+
+        h1 {
+            text-align: center;
+            letter-spacing: 2px;
+            margin-bottom: 24px;
+            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
         }
 
         button {
@@ -30,6 +37,25 @@
             font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
         }
 
+        .hand img {
+            width: 72px;
+            height: auto;
+            border-radius: 8px;
+        }
+
+        .dealt {
+            opacity: 0;
+            transform: translateY(-10px);
+            animation: dealCard 0.25s ease-out forwards;
+        }
+
+        @keyframes dealCard {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
         .status {
             margin-top: 12px;
             padding: 10px;
@@ -39,39 +65,156 @@
 
         .table-image {
             display: block;
-            margin: 10px auto 0;
+            margin: 16px auto 0;
             max-width: 100%;
             border-radius: 12px;
-            opacity: 0.9;
+            transform: scale(0.85);
+        }
+
+        #bankrollRow {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        #betInput {
+            padding: 6px 8px;
+            border-radius: 10px;
+            border: 1px solid #ccc;
+        }
+
+        /* ===== SPLIT HAND UI ===== */
+
+        .hands {
+            display: flex;
+            gap: 16px;
+            margin-top: 6px;
+        }
+
+        .hand-panel {
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            border-radius: 12px;
+            padding: 12px;
+            min-width: 280px;
+            transition: all 0.15s ease;
+        }
+
+        .hand-panel.active {
+            border-color: rgba(255, 255, 255, 0.9);
+            box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.15);
+            transform: translateY(-2px);
+        }
+
+        .hand-panel.inactive {
+            opacity: 0.65;
+        }
+
+        .hand-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        .hand-bet {
+            font-weight: 400;
+            opacity: 0.85;
         }
     </style>
 </head>
 
 <body>
-    <h1>Blackjack</h1>
+    <h1>Basic Blackjack Training</h1>
 
+    <!-- Dealer -->
     <div class="row">
         <strong>Dealer:</strong>
-        <div id="dealerCards" class="cards"></div>
+        <div id="dealerCards" class="cards hand"></div>
         <div id="dealerTotal"></div>
     </div>
 
+    <!-- Player Hands -->
     <div class="row">
         <strong>You:</strong>
-        <div id="playerCards" class="cards"></div>
-        <div id="playerTotal"></div>
+
+        <div id="playerHandsUI" class="hands">
+
+            <!-- Hand 1 -->
+            <div id="handPanel0" class="hand-panel">
+                <div class="hand-header">
+                    <span>Hand 1</span>
+                    <span id="handBet0" class="hand-bet"></span>
+                </div>
+                <div id="playerCards0" class="cards hand"></div>
+                <div id="playerTotal0"></div>
+            </div>
+
+            <!-- Hand 2 (hidden unless split) -->
+            <div id="handPanel1" class="hand-panel" style="display:none;">
+                <div class="hand-header">
+                    <span>Hand 2</span>
+                    <span id="handBet1" class="hand-bet"></span>
+                </div>
+                <div id="playerCards1" class="cards hand"></div>
+                <div id="playerTotal1"></div>
+            </div>
+
+        </div>
     </div>
 
+    <!-- Controls -->
     <div class="row">
         <button id="newGameBtn">New Game</button>
         <button id="hitBtn" disabled>Hit</button>
         <button id="standBtn" disabled>Stand</button>
         <button id="surrenderBtn" disabled>Surrender</button>
+        <button id="doubleBtn" disabled>Double</button>
+        <button id="splitBtn" disabled>Split</button>
+
+        <label style="margin-left: 20px;">
+            Decks:
+            <select id="deckCountSelect">
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="6">6</option>
+                <option value="8">8</option>
+            </select>
+        </label>
     </div>
 
+    <!-- Status -->
     <div id="status" class="status">Click “New Game”.</div>
+
+    <!-- Bankroll -->
+    <div class="row" id="bankrollRow">
+        <strong>Bankroll:</strong> $<span id="bankrollAmt">1000</span>
+        <span style="margin-left:12px;">
+            <label for="betInput"><strong>Bet:</strong></label>
+            $<input id="betInput" type="number" min="1" step="1" value="25" style="width:90px;">
+        </span>
+    </div>
+
     <img src="images/basic_strategy.jpg" alt="Casino table" class="table-image" />
+
     <script src="blackjack-game.js"></script>
+
+    <footer class="credits">
+        <em>
+            Playing cards thanks to<br>
+            Vectorized Playing Cards 1.3 –
+            <a href="http://code.google.com/p/vectorized-playing-cards/" target="_blank" rel="noopener noreferrer">
+                http://code.google.com/p/vectorized-playing-cards/
+            </a><br>
+            Copyright © 2011 – Chris Aguilar<br>
+            Licensed under LGPL 3 –
+            <a href="https://www.gnu.org/copyleft/lesser.html" target="_blank" rel="noopener noreferrer">
+                www.gnu.org/copyleft/lesser.html
+            </a>
+        </em>
+    </footer>
 </body>
 
 </html>
