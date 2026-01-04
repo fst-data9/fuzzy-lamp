@@ -307,6 +307,19 @@ function drawCard(hand) {
 }
 // ----- Actions -----
 function startNewGame() {
+    // ✅ If previous round was a split, clear it only when starting a new round
+    if (playerHands) {
+        playerHands = null;
+        bets = null;
+        handOutcomes = null;
+        activeHandIndex = 0;
+    }
+
+    // also clear any per-hand flags from non-split hands
+    if (playerHand) {
+        delete playerHand._done;
+        delete playerHand._result;
+    }
     // Get and validate bet before deailing
     const bet = getBetAmount();
 
@@ -582,7 +595,7 @@ function settleSplitHands() {
     let summary = [];
 
     for (let i = 0; i < playerHands.length; i++) {
-        // If this hand surrendered, skip payout (already refunded half in surrender())
+        // If this hand surrendered, skip outcome calc (half already refunded in surrender())
         if (handOutcomes && handOutcomes[i] === "surrender") {
             summary.push(`Hand ${i + 1}: SURRENDER`);
             continue;
@@ -601,21 +614,23 @@ function settleSplitHands() {
 
         bankroll += payoutForOutcome(bet, outcome);
         summary.push(`Hand ${i + 1}: ${outcome.toUpperCase()} (${p} vs ${d})`);
+
+        // mark done for UI/buttons
+        hand._done = true;
+        hand._result = outcome;
     }
 
     updateBankrollUI();
 
-    // clear split state
-    playerHands = null;
-    bets = null;
-    activeHandIndex = 0;
-    handOutcomes = null;
+    // ✅ End the round BUT keep playerHands/bets on screen
+    inRound = false;
+    currentBet = 0;          // prevent single-hand payout paths
+    betInputEl.disabled = false;
 
-    // prevent endRound() from paying again
-    currentBet = 0;
-
-    endRound(summary.join(" | "), "lose");
+    render({ hideDealerHoleCard: false });
+    setStatus(summary.join(" | "));
 }
+
 
 function surrender() {
     if (!inRound) return;
