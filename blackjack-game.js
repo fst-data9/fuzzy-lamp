@@ -3,6 +3,7 @@ const SUITS = ["♠", "♥", "♦", "♣"];
 const RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
 const bankrollAmtEl = document.getElementById("bankrollAmt");
 const betInputEl = document.getElementById("betInput");
+const sessionId = crypto.randomUUID();
 
 function createDeck() {
     const deck = [];
@@ -97,7 +98,8 @@ let playerHands = null;      // null when not split, otherwise [hand1, hand2]
 let activeHandIndex = 0;
 let bets = null;
 let handOutcomes = null; // null when not split; otherwise like ["", ""] or [null, null]
-
+let didDouble = false;
+let didSplit = false;
 
 // ----- UI elements -----
 const dealerCardsEl = document.getElementById("dealerCards");
@@ -240,12 +242,70 @@ function render({ hideDealerHoleCard = false } = {}) {
     splitBtn.disabled = !canSplit;
 }
 
+// helper functions to send hand data to postgres
+async function recordHandToDb({ outcome, message }) {
+  try {
+    
+    const betCents = Math.round(currentBet * 100);
 
+    const payload = {
+        sessionId,
+        roundIndex,
+        handIndex: 0,
+
+        betCents: betCents,
+        outcome,
+        payoutCents: calcPayoutCents(outcome, betCents),
+
+        playerCards: playerHand.map(cardToString),
+        dealerCards: dealerHand.map(cardToString),
+        dealerUpcard: dealerHand[0] ? cardToString(dealerHand[0]) : null,
+
+        didSplit: didSplit ? true : false,
+        didDouble: didDouble ? true : false,
+        didSurrender: outcome === "surrender" ? true : false,
+    };
+
+    const res = await fetch("http://localhost:3001/api/hands", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      console.error("Failed to record hand:", res.status, text);
+    }
+  } catch (err) {
+    console.error("Failed to record hand:", err);
+  }
+}
+let roundIndex = 0; // increment each new round
+
+function calcPayoutCents(outcome, bet) {
+  // This should match your bankroll logic, but expressed as net payout for the DB.
+  // Convention (recommended):
+  //  - win: +bet
+  //  - lose: -bet
+  //  - push: 0
+  //  - blackjack: +1.5*bet
+  //  - surrender: -0.5*bet
+  if (bet <= 0) return 0;
+
+  if (outcome === "push") return 0;
+  if (outcome === "win") return bet;
+  if (outcome === "blackjack") return bet + Math.floor(bet / 2);
+  if (outcome === "surrender") return -Math.floor(bet / 2);
+  return -bet; // lose default
+}
+
+//
 
 function endRound(message, outcome = "lose") {
     inRound = false;
     render({ hideDealerHoleCard: false });
-
+    // record hand to DB
+    recordHandToDb({ outcome, message });
     // Payout rules:
     // - lose: you already paid the bet, nothing returned
     // - push: return bet
@@ -307,6 +367,8 @@ function drawCard(hand) {
 }
 // ----- Actions -----
 function startNewGame() {
+    // add round counter
+    roundIndex += 1;
     // ✅ If previous round was a split, clear it only when starting a new round
     if (playerHands) {
         playerHands = null;
@@ -456,7 +518,7 @@ function double() {
     }
 
     bankroll -= betToDouble;
-
+    didDouble = true;
     if (playerHands) {
         bets[i] *= 2;
     } else {
@@ -519,7 +581,7 @@ function split() {
     // Take the extra bet (DO NOT double currentBet)
     bankroll -= currentBet;
     updateBankrollUI();
-
+    didSplit = true;
     // Split into 2 hands
     const secondCard = playerHand.pop();
     const firstHand = [playerHand[0]];
@@ -674,7 +736,23 @@ splitBtn.addEventListener("click", split);
 updateBankrollUI();
 render({ hideDealerHoleCard: false });
 
+// starting a session
+async function startSession() {
+  try {
+    await fetch("http://localhost:3001/api/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId,
+        userAgent: navigator.userAgent
+      })
+    });
+  } catch (e) {
+    console.error("Failed to start session:", e);
+  }
+}
 
+startSession();
 // playing cards thanks to 
 /* Vectorized Playing Cards 1.3- http://code.google.com/p/vectorized-playing-cards/
 Copyright 2011 - Chris Aguilar
