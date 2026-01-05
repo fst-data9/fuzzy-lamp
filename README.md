@@ -11,6 +11,7 @@ This is a quickly created game of blackjack to be used in later projects, but ca
 - [ ] Maintain a versioned library of reusable SQL queries
 - [x] Connect a database to Blackjack training application and store results
 - [ ] under blackjack app create users
+- [ ] Automate testing of the UI and of data within PostGres
 
 ---
 
